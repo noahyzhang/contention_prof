@@ -1,0 +1,164 @@
+#include <dlfcn.h>
+#include <errno.h>
+#include <pthread.h>
+#include <atomic>
+#include "common.h"
+#include "contention.h"
+
+namespace noahyzhang {
+namespace contention_prof {
+
+// 锁操作的函数类型
+typedef int (*pthread_mutex_lock_func_type)(pthread_mutex_t *mutex);
+typedef int (*pthread_mutex_unlock_func_type)(pthread_mutex_t *mutex);
+
+// 定义锁操作的系统接口
+static pthread_mutex_lock_func_type real_pthread_mutex_lock_func = nullptr;
+static pthread_mutex_unlock_func_type real_pthread_mutex_unlock_func = nullptr;
+
+// 初始化函数
+void mutex_hook_init() {
+    real_pthread_mutex_lock_func = (pthread_mutex_lock_func_type)dlsym(RTLD_NEXT, "pthread_mutex_lock");
+    real_pthread_mutex_unlock_func = (pthread_mutex_unlock_func_type)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
+}
+
+const int TLS_MAX_COUNT = 3;
+
+struct MutexAndContentionSite {
+    pthread_mutex_t* mutex;
+    pthread_contention_site_t csite;
+};
+
+struct TLSPthreadContentionSites {
+    int count;
+    uint64_t cp_version;
+    MutexAndContentionSite list[TLS_MAX_COUNT];
+};
+
+static __thread TLSPthreadContentionSites tls_csites = {0, 0, {}};
+static __thread bool tls_inside_lock = false;
+
+static uint64_t g_cp_version = 0;
+
+const size_t MUTEX_MAP_SIZE = 1024;
+struct MutexMapEntry {
+    std::atomic<uint64_t> versioned_mutex;
+    pthread_contention_site_t csite;
+};
+static MutexMapEntry g_mutex_map[MUTEX_MAP_SIZE] = {};
+
+bool is_contention_site_valid(const pthread_contention_site_t& cs) {
+    return cs.sampling_range;
+}
+
+void make_contention_site_invalid(pthread_contention_site_t* cs) {
+    cs->sampling_range = 0;
+}
+
+pthread_contention_site_t* add_pthread_contention_site(pthread_mutex_t* mutex) {
+    MutexMapEntry& entry = g_mutex_map[hash_mutex_ptr(mutex) & (MUTEX_MAP_SIZE - 1)];
+    auto& m = entry.versioned_mutex;
+    uint64_t expected = m.load(std::memory_order_relaxed);
+    if (expected == 0 || (expected >> PTR_BITS) != (g_cp_version & ((1 << (64 - PTR_BITS)) - 1))) {
+        uint64_t desired = (g_cp_version << PTR_BITS) | (uint64_t)mutex;
+        if (m.compare_exchange_strong(expected, desired, std::memory_order_acquire)) {
+            return &entry.csite;
+        }
+    }
+    return nullptr;
+}
+
+bool remove_pthread_contention_site(pthread_mutex_t* mutex, pthread_contention_site_t* saved_csite) {
+    MutexMapEntry& entry = g_mutex_map[hash_mutex_ptr(mutex) & (MUTEX_MAP_SIZE - 1)];
+    auto& m = entry.versioned_mutex;
+    if (m.load(std::memory_order_relaxed) & (((((uint64_t)1) << PTR_BITS) - 1)) != (uint64_t)mutex) {
+        return false;
+    }
+    *saved_csite = entry.csite;
+    make_contention_site_invalid(&entry.csite);
+    m.store(0, std::memory_order_release);
+    return true;
+}
+
+// 注意这个函数在锁外执行
+void submit_contention(const pthread_contention_site_t& csite, int64_t now_ns) {
+    tls_inside_lock = true;
+    
+}
+
+int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
+    // 对于没有竞争的锁，直接放行，不要减慢人家的速度
+    int res = pthread_mutex_trylock(mutex);
+    if (res != EBUSY) {
+        // EBUSY 表示 mutex 所指向的互斥锁已锁定，无法获取，有竞争
+        return res;
+    }
+
+    const size_t sampling_range = is_collectable();
+
+    pthread_contention_site_t* csite = nullptr;
+    TLSPthreadContentionSites& fast_alt = tls_csites;
+    if (fast_alt.cp_version != g_cp_version) {
+        fast_alt.cp_version = g_cp_version;
+        fast_alt.count = 0;
+    }
+    if (fast_alt.count < TLS_MAX_COUNT) {
+        MutexAndContentionSite& entry = fast_alt.list[fast_alt.count++];
+        entry.mutex = mutex;
+        csite = &entry.csite;
+        if (!sampling_range) {
+            make_contention_site_invalid(&entry.csite);
+            return real_pthread_mutex_lock_func(mutex);
+        }
+    }
+    if (!sampling_range) {
+        return real_pthread_mutex_lock_func(mutex);
+    }
+    const uint64_t start_time_ns = Util::get_monotonic_time_ns();
+    res = real_pthread_mutex_lock_func(mutex);
+    if (res == 0) {
+        if (csite == nullptr) {
+            csite = add_pthread_contention_site(mutex);
+            if (csite == nullptr) {
+                return res;
+            }
+        }
+        csite->duration_ns = Util::get_monotonic_time_ns() - start_time_ns;
+        csite->sampling_range = sampling_range;
+    }
+    return res;
+}
+
+int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
+    uint64_t unlock_start_time_ns = 0;
+    bool miss_in_tls = true;
+    pthread_contention_site_t saved_csite = {0, 0};
+    TLSPthreadContentionSites& fast_alt = tls_csites;
+    for (int i = fast_alt.count - 1; i >= 0; --i) {
+        if (fast_alt.list[i].mutex == mutex) {
+            if (is_contention_site_valid(fast_alt.list[i].csite)) {
+                saved_csite = fast_alt.list[i].csite;
+                unlock_start_time_ns = Util::get_monotonic_time_ns();
+            }
+            fast_alt.list[i] = fast_alt.list[--fast_alt.count];
+            miss_in_tls = false;
+            break;
+        }
+    }
+    if (miss_in_tls) {
+        if (remove_pthread_contention_site(mutex, &saved_csite)) {
+            unlock_start_time_ns = Util::get_monotonic_time_ns();
+        }
+    }
+    int res = real_pthread_mutex_unlock_func(mutex);
+    // 注意: 这里往下属于锁外
+    if (unlock_start_time_ns) {
+        uint64_t unlock_end_time_ns = Util::get_monotonic_time_ns();
+        saved_csite.duration_ns += unlock_end_time_ns - unlock_start_time_ns;
+        submit_contention(saved_csite, unlock_end_time_ns);
+    }
+    return res;
+}
+ 
+}  // namespace contention_prof
+}  // namespace noahyzhang
