@@ -3,17 +3,35 @@
 #include <errno.h>
 #include <map>
 #include <list>
-#include "common.h"
 #include "collector.h"
 
 namespace contention_prof {
 
 static const int64_t COLLECTOR_GRAB_INTERVAL_US = 100000L;  // 100ms
 
-class Collector {
+struct CombineCollected {
+    void operator()(Collected*& s1, Collected* s2) const {
+        if (s2 == nullptr) {
+            return;
+        }
+        if (s1 == nullptr) {
+            s1 = s2;
+            return;
+        }
+        s1->insert_before_as_list(s2);
+    }
+};
+
+class Collector : public Reducer<Collected*, CombineCollected> {
 public:
     Collector();
     ~Collector();
+
+public:
+    static Collector* get_instance() {
+        static Collector instance;
+        return &instance;
+    }
 
 private:
     void grab_thread();
@@ -37,7 +55,7 @@ private:
     int64_t ngrab_;
     int64_t ndrop_;
     int64_t ndump_;
-    pthread_t dump_thread_mutex_;
+    pthread_mutex_t dump_thread_mutex_;
     pthread_cond_t dump_thread_cond_;
     std::list<Collected> dump_root_;
     pthread_mutex_t sleep_mutex_;
@@ -119,6 +137,14 @@ void Collector::dump_thread() {
         Collected& p = dump_root_.front();
         p.dump_and_destroy(round);
         ++ndump_;
+    }
+}
+
+void Collected::submit(uint64_t cpu_us) {
+    if (cpu_us < Collector::get_instance()->last_active_cpuwide_us() + COLLECTOR_GRAB_INTERVAL_US * 2) {
+        *Collector::get_instance() << this;
+    } else {
+        destroy();
     }
 }
 

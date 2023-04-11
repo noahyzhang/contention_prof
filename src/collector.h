@@ -15,8 +15,14 @@
 #include <stddef.h>
 #include <vector>
 #include <atomic>
+#include <gflags/gflags.h>
+#include "common/common.h"
+#include "common/linked_list.h"
+#include "common/reducer.h"
 
 namespace contention_prof {
+
+DEFINE_int32(collector_expected_per_second, 1000, "Expected number of samples to be collected per second");
 
 struct CollectorSpeedLimit {
     size_t sampling_range;
@@ -25,13 +31,15 @@ struct CollectorSpeedLimit {
     int64_t first_sample_real_us;
 };
 
+static const size_t COLLECTOR_SAMPLING_BASE = 16384;
+
 class Collected;
 class CollectorPreprocessor {
 public:
     virtual void process(std::vector<Collected*>& sample) = 0;
 };
 
-class Collected {
+class Collected : public LinkNode<Collected> {
 public:
     void submit(uint64_t time_us);
     virtual void dump_and_destroy(size_t round_index) = 0;
@@ -40,26 +48,27 @@ public:
     virtual CollectorPreprocessor* preprocessor() { return nullptr; }
 };
 
-struct SampleContention : public Collected {
-    int64_t duration_ns;
-    double count;
-    int nframes;
-    void* stack[26];
-
-    void dump_and_destroy(size_t round);
-    void destroy();
-    CollectorSpeedLimit* speed_limit() {
-        return &g_cp_sl;
+size_t is_collectable_before_first_time_grabbed(CollectorSpeedLimit* sl) {
+    if (!sl->ever_grabbed) {
+        int before_add = sl->count_before_grabbed.fetch_add(1, std::memory_order_relaxed);
+        if (before_add == 0) {
+            sl->first_sample_real_us = Util::get_monotonic_time_us();
+        } else if (before_add >= FLAGS_collector_expected_per_second) {
+            Collector::get_instance()->wakeup_grab_thread();
+        }
     }
-    size_t hash_code() const {
-        if (nframes == 0) {
+    return sl->sampling_range;
+}
+
+inline size_t is_collectable(CollectorSpeedLimit* speed_limit) {
+    if (__glibc_likely(speed_limit->ever_grabbed)) {
+        const size_t sampling_range = speed_limit->sampling_range;
+        if ((Util::fast_rand() & (COLLECTOR_SAMPLING_BASE - 1)) >= sampling_range) {
             return 0;
         }
-        uint32_t code = 1;
-        uint32_t seed = nframes;
-        // ???
-        return code;
+        return sampling_range;
     }
+    is_collectable_before_first_time_grabbed(speed_limit);
 }
 
 }  // namespace contention_prof

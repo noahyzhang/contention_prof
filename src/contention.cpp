@@ -1,8 +1,11 @@
 #include <dlfcn.h>
 #include <errno.h>
+#include <execinfo.h>
 #include <pthread.h>
 #include <atomic>
 #include "common.h"
+#include "collector.h"
+#include "common/object_pool.h"
 #include "contention.h"
 
 namespace contention_prof {
@@ -20,6 +23,23 @@ void mutex_hook_init() {
     real_pthread_mutex_lock_func = (pthread_mutex_lock_func_type)dlsym(RTLD_NEXT, "pthread_mutex_lock");
     real_pthread_mutex_unlock_func = (pthread_mutex_unlock_func_type)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
 }
+
+struct SampledContention : public Collected {
+    int64_t duration_ns;
+    double count;
+    int frames_count;
+    void* stack[26];
+
+    void dump_and_destroy(size_t round);
+    void destroy();
+    CollectorSpeedLimit* speed_limit() {
+        return &g_cp_sl;
+    }
+
+    size_t hash_code() const {
+        return 1;
+    }
+};
 
 const int TLS_MAX_COUNT = 3;
 
@@ -82,7 +102,12 @@ bool remove_pthread_contention_site(pthread_mutex_t* mutex, pthread_contention_s
 // 注意这个函数在锁外执行
 void submit_contention(const pthread_contention_site_t& csite, int64_t now_ns) {
     tls_inside_lock = true;
-    
+    SampledContention* sc = get_object<SampledContention>();
+    sc->duration_ns = csite.duration_ns * COLLECTOR_SAMPLING_BASE / csite.sampling_range;
+    sc->count = COLLECTOR_SAMPLING_BASE / static_cast<double>(csite.sampling_range);
+    sc->frames_count = backtrace(sc->stack, sizeof(sc->stack) / sizeof(sc->stack[0]));
+    sc->submit(now_ns / 1000);
+    tls_inside_lock = false;
 }
 
 int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
@@ -93,7 +118,7 @@ int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
         return res;
     }
 
-    const size_t sampling_range = is_collectable();
+    const size_t sampling_range = is_collectable(&g_cp_sl);
 
     pthread_contention_site_t* csite = nullptr;
     TLSPthreadContentionSites& fast_alt = tls_csites;

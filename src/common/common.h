@@ -21,6 +21,7 @@ class Util {
 public:
     static uint64_t get_monotonic_time_ns();
     static uint64_t get_monotonic_time_us();
+    static uint64_t fast_rand();
 };
 
 }  // contention_prof
