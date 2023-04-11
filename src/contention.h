@@ -14,7 +14,6 @@
 #include <stdint.h>
 #include <stddef.h>
 
-namespace noahyzhang {
 namespace contention_prof {
 
 typedef struct {
@@ -28,4 +27,3 @@ int pthread_mutex_lock_impl(pthread_mutex_t* mutex);
 int pthread_mutex_unlock_impl(pthread_mutex_t* mutex);
  
 }  // namespace contention_prof
-}  // namespace noahyzhang

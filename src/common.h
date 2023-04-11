@@ -13,7 +13,6 @@
 
 #include <stdint.h>
 
-namespace noahyzhang {
 namespace contention_prof {
 
 #define LOG(level)
@@ -25,4 +24,3 @@ public:
 };
 
 }  // contention_prof
-}  // noahyzhang

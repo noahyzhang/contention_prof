@@ -5,7 +5,6 @@
 #include "common.h"
 #include "contention.h"
 
-namespace noahyzhang {
 namespace contention_prof {
 
 // 锁操作的函数类型
@@ -161,4 +160,3 @@ int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
 }
  
 }  // namespace contention_prof
-}  // namespace noahyzhang

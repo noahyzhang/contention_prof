@@ -1,7 +1,6 @@
 #include <time.h>
 #include "common.h"
 
-namespace noahyzhang {
 namespace contention_prof {
 
 uint64_t Util::get_monotonic_time_ns() {
@@ -11,4 +10,3 @@ uint64_t Util::get_monotonic_time_ns() {
 }
 
 }  // namespace contention_prof
-}  // namespace noahyzhang

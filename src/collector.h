@@ -16,7 +16,6 @@
 #include <vector>
 #include <atomic>
 
-namespace noahyzhang {
 namespace contention_prof {
 
 struct CollectorSpeedLimit {
@@ -64,4 +63,3 @@ struct SampleContention : public Collected {
 }
 
 }  // namespace contention_prof
-}  // namespace noahyzhang

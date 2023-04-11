@@ -6,7 +6,6 @@
 #include "common.h"
 #include "collector.h"
 
-namespace noahyzhang {
 namespace contention_prof {
 
 static const int64_t COLLECTOR_GRAB_INTERVAL_US = 100000L;  // 100ms
@@ -124,4 +123,3 @@ void Collector::dump_thread() {
 }
 
 }  // namespace contention_prof
-}  // namespace noahyzhang
