@@ -13,6 +13,13 @@
 
 namespace contention_prof {
 
+struct VoidOp {
+    template <typename T>
+    T operator()(const T&, const T&) const {
+        abort();
+    }
+};
+
 template <typename T, typename Op, typename InvOp = VoidOp>
 class Reducer {
 public:
@@ -60,6 +67,10 @@ public:
     }
 
     Reducer& operator<<(const T& value);
+
+    T reset() {
+        return combiner_.reset_all_agent();
+    }
 
 private:
     combiner_type combiner_;

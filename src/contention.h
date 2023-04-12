@@ -13,6 +13,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <pthread.h>
 
 namespace contention_prof {
 

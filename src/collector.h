@@ -24,14 +24,20 @@ namespace contention_prof {
 
 DEFINE_int32(collector_expected_per_second, 1000, "Expected number of samples to be collected per second");
 
+static const size_t COLLECTOR_SAMPLING_BASE = 16384;
+
 struct CollectorSpeedLimit {
     size_t sampling_range;
     bool ever_grabbed;
     std::atomic<int> count_before_grabbed;
     int64_t first_sample_real_us;
-};
 
-static const size_t COLLECTOR_SAMPLING_BASE = 16384;
+    CollectorSpeedLimit()
+        : sampling_range(COLLECTOR_SAMPLING_BASE)
+        , ever_grabbed(false)
+        , count_before_grabbed(0)
+        , first_sample_real_us(0) {}
+};
 
 class Collected;
 class CollectorPreprocessor {

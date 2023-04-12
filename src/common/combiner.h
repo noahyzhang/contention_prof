@@ -112,7 +112,7 @@ public:
         ResultTp ret = global_result_;
         for (LinkNode<Agent>* node = agents_.head(); node != agents_.end(); node = node->next()) {
             node->value()->element.load(&tls_value);
-            op_(ret, tls_value);
+            call_op_returning_void(op_, ret, tls_value);
         }
         return res;
     }

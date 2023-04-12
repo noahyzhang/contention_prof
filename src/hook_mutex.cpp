@@ -1,9 +1,9 @@
 #include "contention.h"
 #include "hook_mutex.h"
 
-using noahyzhang::contention_prof::mutex_hook_init;
-using noahyzhang::contention_prof::pthread_mutex_lock_impl;
-using noahyzhang::contention_prof::pthread_mutex_unlock_impl;
+using contention_prof::mutex_hook_init;
+using contention_prof::pthread_mutex_lock_impl;
+using contention_prof::pthread_mutex_unlock_impl;
 
 // 系统自动调用
 __attribute__((constructor)) static void mutex_hook_constructor() {

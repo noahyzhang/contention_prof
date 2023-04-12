@@ -3,7 +3,10 @@
 #include <execinfo.h>
 #include <pthread.h>
 #include <atomic>
-#include "common.h"
+#include <mutex>
+#include <memory>
+#include "common/common.h"
+#include "sample.h"
 #include "collector.h"
 #include "common/object_pool.h"
 #include "contention.h"
@@ -23,23 +26,6 @@ void mutex_hook_init() {
     real_pthread_mutex_lock_func = (pthread_mutex_lock_func_type)dlsym(RTLD_NEXT, "pthread_mutex_lock");
     real_pthread_mutex_unlock_func = (pthread_mutex_unlock_func_type)dlsym(RTLD_NEXT, "pthread_mutex_unlock");
 }
-
-struct SampledContention : public Collected {
-    int64_t duration_ns;
-    double count;
-    int frames_count;
-    void* stack[26];
-
-    void dump_and_destroy(size_t round);
-    void destroy();
-    CollectorSpeedLimit* speed_limit() {
-        return &g_cp_sl;
-    }
-
-    size_t hash_code() const {
-        return 1;
-    }
-};
 
 const int TLS_MAX_COUNT = 3;
 
@@ -73,6 +59,12 @@ bool is_contention_site_valid(const pthread_contention_site_t& cs) {
 void make_contention_site_invalid(pthread_contention_site_t* cs) {
     cs->sampling_range = 0;
 }
+
+inline uint64_t hash_mutex_ptr(const pthread_mutex_t* m) {
+    return Util::fmix64((uint64_t)m);
+}
+
+const int PTR_BITS = 48;
 
 pthread_contention_site_t* add_pthread_contention_site(pthread_mutex_t* mutex) {
     MutexMapEntry& entry = g_mutex_map[hash_mutex_ptr(mutex) & (MUTEX_MAP_SIZE - 1)];
@@ -183,5 +175,41 @@ int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
     }
     return res;
 }
- 
+
+static ContentionProfiler* g_cp = nullptr;
+static std::mutex g_cp_mutex;
+
+bool ContentionProfilerStart(const char* filename) {
+    if (filename == nullptr) {
+        return false;
+    }
+    if (g_cp) {
+        return false;
+    }
+    std::unique_ptr<ContentionProfiler> ctx(new ContentionProfiler(filename));
+    {
+        std::lock_guard<std::mutex> guard(g_cp_mutex);
+        if (g_cp) {
+            return false;
+        }
+        g_cp = ctx.release();
+        ++g_cp_version;
+    }
+    return true;
+}
+
+void ContentionProfilerStop() {
+    ContentionProfiler* ctx = nullptr;
+    if (g_cp) {
+        std::unique_lock<std::mutex> mu(g_cp_mutex);
+        if (g_cp) {
+            ctx = g_cp;
+            g_cp = nullptr;
+            mu.unlock();
+            ctx->init_if_needed();
+            delete ctx;
+        }
+    }
+}
+
 }  // namespace contention_prof
