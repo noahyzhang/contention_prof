@@ -20,10 +20,6 @@ class Util {
 public:
     static uint64_t get_monotonic_time_ns();
     static uint64_t get_monotonic_time_us();
-    static uint64_t fast_rand();
-
-    static timespec microseconds_from_now(int64_t microseconds);
-
     static int64_t gettimeofday_us();
 
     static uint64_t fmix64(uint64_t m);
@@ -31,4 +27,4 @@ public:
     static std::string get_self_maps();
 };
 
-}  // contention_prof
+}  // namespace contention_prof
