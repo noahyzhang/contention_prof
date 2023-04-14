@@ -25,8 +25,8 @@ template <typename Agent>
 class AgentGroup {
 public:
     using agent_type = Agent;
-    static size_t RAW_BLOCK_SIZE = 4096;
-    static size_t ELEMENT_PER_BLOCK = (RAW_BLOCK_SIZE + sizeof(Agent) - 1) / sizeof(Agent);
+    const static size_t RAW_BLOCK_SIZE = 4096;
+    const static size_t ELEMENT_PER_BLOCK = (RAW_BLOCK_SIZE + sizeof(Agent) - 1) / sizeof(Agent);
 
     struct ThreadBlock {
         inline Agent* at(size_t offset) {

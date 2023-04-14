@@ -16,6 +16,7 @@
 #include <string>
 #include <fstream>
 #include <unordered_set>
+#include "common/murmurhash3.h"
 #include "collector.h"
 
 namespace contention_prof {
@@ -40,7 +41,7 @@ struct SampledContention : public Collected {
         }
         uint32_t code = 1;
         uint32_t seed = frames_count;
-        Util::MurmurHash3_x86_32(stack, sizeof(void*) * frames_count, seed, &code);
+        MurmurHash3_x86_32(stack, sizeof(void*) * frames_count, seed, &code);
         return code;
     }
 };

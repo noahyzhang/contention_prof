@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 2.8)
 
 project(contention_prof)
 
+include_directories(
+    src
+)
+
 file (GLOB_RECURSE SRC
     src/*.cpp
 )

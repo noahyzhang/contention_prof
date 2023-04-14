@@ -25,6 +25,8 @@ public:
     static uint64_t fmix64(uint64_t m);
 
     static std::string get_self_maps();
+
+    static void MurmurHash3_x86_32(const void* key, int len, uint32_t seed, void* out);
 };
 
 }  // namespace contention_prof

@@ -11,14 +11,11 @@
 
 #pragma once
 
-namespace contention_prof {
+#include "common/sampler.h"
+#include "common/series.h"
+#include "common/combiner.h"
 
-struct VoidOp {
-    template <typename T>
-    T operator()(const T&, const T&) const {
-        abort();
-    }
-};
+namespace contention_prof {
 
 template <typename T, typename Op, typename InvOp = VoidOp>
 class Reducer {

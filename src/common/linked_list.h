@@ -1,6 +1,6 @@
 /**
  * @file linked_list.h
- * @author your name (you@domain.com)
+ * @author noahyzhang
  * @brief 
  * @version 0.1
  * @date 2023-04-11
@@ -13,6 +13,11 @@
 
 namespace contention_prof {
 
+/**
+ * @brief 双向链表的节点实现
+ * 
+ * @tparam T 
+ */
 template <typename T>
 class LinkNode {
 public:
@@ -79,6 +84,11 @@ private:
     LinkNode<T>* next_;
 };
 
+/**
+ * @brief 双向链表的实现
+ * 
+ * @tparam T 
+ */
 template <typename T>
 class LinkedList {
 public:
@@ -88,7 +98,7 @@ public:
         e->insert_before(&root_);
     }
 
-    LinkedNode<T>* head() const {
+    LinkNode<T>* head() const {
         return root_.next();
     }
 

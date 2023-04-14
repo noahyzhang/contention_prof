@@ -5,6 +5,7 @@
 #include <mutex>
 #include <list>
 #include <gflags/gflags.h>
+#include "common/time.h"
 #include "common/log.h"
 #include "collector.h"
 
@@ -12,22 +13,7 @@ namespace contention_prof {
 
 DEFINE_int32(collector_max_pending_samples, 1000, "Destroy unprocessed samples when they're too many");
 
-static const int64_t COLLECTOR_GRAB_INTERVAL_US = 100000L;  // 100ms
-
 static CollectorSpeedLimit g_null_speed_limit;
-
-struct CombineCollected {
-    void operator()(Collected*& s1, Collected* s2) const {
-        if (s2 == nullptr) {
-            return;
-        }
-        if (s1 == nullptr) {
-            s1 = s2;
-            return;
-        }
-        s1->insert_before_as_list(s2);
-    }
-};
 
 class Collector : public Reducer<Collected*, CombineCollected> {
 public:
@@ -196,7 +182,7 @@ void Collector::grab_thread() {
         busy_second += (now - last_active_cpuwide_us_) / 1E6;
         last_active_cpuwide_us_ = now;
         if (!stop_ && abstime > now) {
-            timespec abstimespec = Util::microseconds_from_now(abstime - now);
+            timespec abstimespec = microseconds_from_now(abstime - now);
             pthread_mutex_lock(&sleep_mutex_);
             pthread_cond_timedwait(&sleep_cond_, &sleep_mutex_, &abstimespec);
             pthread_mutex_unlock(&sleep_mutex_);
@@ -261,6 +247,18 @@ void Collector::update_speed_limit(
     }
 }
 
+size_t is_collectable_before_first_time_grabbed(CollectorSpeedLimit* sl) {
+    if (!sl->ever_grabbed) {
+        int before_add = sl->count_before_grabbed.fetch_add(1, std::memory_order_relaxed);
+        if (before_add == 0) {
+            sl->first_sample_real_us = Util::get_monotonic_time_us();
+        } else if (before_add >= FLAGS_collector_expected_per_second) {
+            Collector::get_instance()->wakeup_grab_thread();
+        }
+    }
+    return sl->sampling_range;
+}
+
 void Collector::dump_thread() {
     int64_t last_ns = Util::get_monotonic_time_ns();
     double busy_seconds = 0;
@@ -297,9 +295,9 @@ void Collector::dump_thread() {
     }
 }
 
-void Collected::submit(uint64_t cpu_us) {
+void Collected::submit(uint64_t cpu_time_us) {
     Collector* d = Collector::get_instance();
-    if (cpu_us < d->last_active_cpuwide_us() + COLLECTOR_GRAB_INTERVAL_US * 2) {
+    if (cpu_time_us < d->last_active_cpuwide_us() + COLLECTOR_GRAB_INTERVAL_US * 2) {
         *d << this;
     } else {
         destroy();

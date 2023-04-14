@@ -2,6 +2,7 @@
 #include <mutex>
 #include <sstream>
 #include "common/object_pool.h"
+#include "common/log.h"
 #include "sample.h"
 
 namespace contention_prof {

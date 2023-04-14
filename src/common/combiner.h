@@ -12,9 +12,37 @@
 #pragma once
 
 #include <mutex>
+#include "common/agent_group.h"
 #include "common/linked_list.h"
 
 namespace contention_prof {
+
+template <typename Combiner>
+class GlobalValue {
+public:
+    using result_type = typename Combiner::result_type;
+    using agent_type = typename Combiner::Agent;
+
+    GlobalValue(agent_type* a, Combiner* c)
+        : a_(a)
+        , c_(c) {}
+    ~GlobalValue() = default;
+
+    result_type* lock() {
+        a_->element.mtx_.unlock();
+        c_->mtx_.lock();
+        return &c_->global_result;
+    }
+
+    void unlock() {
+        c_->mtx_.unlock();
+        a_->element.mtx_.lock();
+    }
+
+private:
+    agent_type* a_;
+    Combiner* c_;
+};
 
 template <typename T, typename Enabler = void>
 class ElementContainer {
@@ -42,7 +70,7 @@ public:
     }
 
     template <typename Op, typename GlobalValue>
-    void merge_global(const op& op, GlobalValue& global_value) {
+    void merge_global(const Op& op, GlobalValue& global_value) {
         std::lock_guard<std::mutex> guard(mtx_);
         op(global_value, value_);
     }
@@ -86,13 +114,13 @@ public:
         ElementContainer<ElementTp> element;
     };
 
-    using AgentGroup = AgentGroup<Agent>;
+    using AgentGroupClass = AgentGroup<Agent>;
 
     explicit AgentCombiner(
         const ResultTp result_identify = ResultTp(),
         const ElementTp element_identify = ElementTp(),
         const BinaryOp& op = BinaryOp())
-        : id_(AgentGroup::create_new_agent())
+        : id_(AgentGroupClass::create_new_agent())
         , op_(op)
         , global_result_(result_identify)
         , result_identify_(result_identify)
@@ -101,7 +129,7 @@ public:
     ~AgentCombiner() {
         if (id_ >= 0) {
             clear_all_agents();
-            AgentGroup::destory_agent(id_);
+            AgentGroupClass::destory_agent(id_);
             id_ = -1;
         }
     }
@@ -114,7 +142,7 @@ public:
             node->value()->element.load(&tls_value);
             call_op_returning_void(op_, ret, tls_value);
         }
-        return res;
+        return ret;
     }
 
     ResultTp reset_all_agents() {
@@ -151,9 +179,9 @@ public:
     }
 
     inline Agent* get_or_create_tls_agent() {
-        Agent* agent = AgentGroup::get_tls_agent(id_);
+        Agent* agent = AgentGroupClass::get_tls_agent(id_);
         if (agent == nullptr) {
-            agent = AgentGroup::get_or_create_tls_agent(id_);
+            agent = AgentGroupClass::get_or_create_tls_agent(id_);
             if (agent == nullptr) {
                 return nullptr;
             }
