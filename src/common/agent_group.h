@@ -49,7 +49,7 @@ public:
     }
 
     inline static int destroy_agent(AgentId id) {
-        std::lock_guard<std::mutex> guard;
+        std::lock_guard<std::mutex> guard(mtx_);
         if (id < 0 || id >= agent_kinds_) {
             errno = EINVAL;
             return -1;

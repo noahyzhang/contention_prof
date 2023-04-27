@@ -12,6 +12,7 @@
 namespace contention_prof {
 
 DEFINE_int32(collector_max_pending_samples, 1000, "Destroy unprocessed samples when they're too many");
+DEFINE_int32(collector_expected_per_second, 1000, "Expected number of samples to be collected per second");
 
 static CollectorSpeedLimit g_null_speed_limit;
 

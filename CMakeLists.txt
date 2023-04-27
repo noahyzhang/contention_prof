@@ -14,4 +14,6 @@ add_library(contention_prof SHARED ${SRC})
 
 target_link_libraries(contention_prof
     pthread
+    dl
+    gflags
 )

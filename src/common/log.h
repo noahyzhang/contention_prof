@@ -26,19 +26,7 @@ enum LogLevel {
     ERROR,
 };
 
-std::string get_log_level_str(LogLevel log_level) {
-    switch (log_level) {
-    case DEBUG:
-        return "DEBUG";
-    case INFO:
-        return "INFO";
-    case WARN:
-        return "WARN";
-    case ERROR:
-        return "ERROR";
-    }
-    return "INVALID_LOG_LEVEL";
-}
+std::string get_log_level_str(LogLevel log_level);
 
 class Logger {
 public:
@@ -73,11 +61,7 @@ private:
     static std::ofstream file_;
 };
 
-std::ofstream Logger::file_;
-
-void init_logger(const std::string& filename) {
-    Logger::file_.open(filename, std::ofstream::app);
-}
+void init_logger(const std::string& filename);
 
 #define LOG(log_level) \
     Logger().start(log_level, __LINE__, __FUNCTION__)

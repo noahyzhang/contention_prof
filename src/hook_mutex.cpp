@@ -11,11 +11,11 @@ __attribute__((constructor)) static void mutex_hook_constructor() {
 }
 
 // 重写 pthread_mutex_lock 系统调用
-int pthread_mutex_lock(pthread_mutex_t *mutex) {
+int pthread_mutex_lock(pthread_mutex_t *mutex)__THROWNL {
     return pthread_mutex_lock_impl(mutex);
 }
 
 // 重写 pthread_mutex_unlock 系统调用
-int pthread_mutex_unlock(pthread_mutex_t *mutex) {
+int pthread_mutex_unlock(pthread_mutex_t *mutex)__THROWNL {
     return pthread_mutex_unlock_impl(mutex);
 }

@@ -23,8 +23,6 @@
 
 namespace contention_prof {
 
-DEFINE_int32(collector_expected_per_second, 1000, "Expected number of samples to be collected per second");
-
 static const size_t COLLECTOR_SAMPLING_BASE = 16384;
 static const int64_t COLLECTOR_GRAB_INTERVAL_US = 100000L;  // 100ms
 

@@ -14,6 +14,7 @@
 #include <mutex>
 #include "common/agent_group.h"
 #include "common/linked_list.h"
+#include "call_op_returning_void.h"
 
 namespace contention_prof {
 
@@ -66,7 +67,7 @@ public:
     template <typename Op, typename T1>
     void modify(const Op& op, const T1& value2) {
         std::lock_guard<std::mutex> guard(mtx_);
-        call_op_retuning_void(op, value_, value2);
+        call_op_returning_void(op, value_, value2);
     }
 
     template <typename Op, typename GlobalValue>
@@ -129,7 +130,7 @@ public:
     ~AgentCombiner() {
         if (id_ >= 0) {
             clear_all_agents();
-            AgentGroupClass::destory_agent(id_);
+            AgentGroupClass::destroy_agent(id_);
             id_ = -1;
         }
     }

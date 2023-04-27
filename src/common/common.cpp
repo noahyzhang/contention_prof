@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <unistd.h>
+#include <sys/time.h>
 #include "common.h"
 
 namespace contention_prof {
@@ -14,13 +15,23 @@ uint64_t Util::get_monotonic_time_ns() {
     return now.tv_sec *  static_cast<uint64_t>(1E9) + now.tv_nsec;
 }
 
-__attribute__((always_inline)) uint64_t Util::fmix64(uint64_t k) {
-  k ^= k >> 33;
-  k *= 0xff51afd7ed558ccdULL;
-  k ^= k >> 33;
-  k *= 0xc4ceb9fe1a85ec53ULL;
-  k ^= k >> 33;
-  return k;
+uint64_t Util::get_monotonic_time_us() {
+    return get_monotonic_time_ns() / 1000L;
+}
+
+int64_t Util::gettimeofday_us() {
+    timeval now;
+    gettimeofday(&now, nullptr);
+    return now.tv_sec * 1000000L + now.tv_usec;
+}
+
+uint64_t Util::fmix64(uint64_t k) {
+    k ^= k >> 33;
+    k *= 0xff51afd7ed558ccdULL;
+    k ^= k >> 33;
+    k *= 0xc4ceb9fe1a85ec53ULL;
+    k ^= k >> 33;
+    return k;
 }
 
 std::string Util::get_self_maps() {

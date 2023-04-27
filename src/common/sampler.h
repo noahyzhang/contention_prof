@@ -35,7 +35,7 @@ struct Sample {
 class SamplerCollector;
 class Sampler : public LinkNode<Sampler> {
 public:
-    Sampler() : used_(true) {}
+    Sampler();
     virtual void take_sample() = 0;
     void schedule();
     void destroy();
