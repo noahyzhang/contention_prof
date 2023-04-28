@@ -102,7 +102,7 @@ public:
             delete reinterpret_cast<LocalPool*>(arg);
         }
 
-    #define OBJECT_POOL_GET(CTOR_ARGS)
+    #define OBJECT_POOL_GET(CTOR_ARGS)  \
         if (cur_free_.free_count) {  \
             return cur_free_.ptrs[--cur_free_.free_count];  \
         }  \
@@ -110,7 +110,7 @@ public:
             return cur_free_.ptrs[--cur_free_.free_count];  \
         }  \
         if (cur_block_ && cur_block_->item_count < BLOCK_ITEM_COUNT) {  \
-            T* obj = new (T*)cur_block_->items + cur_block_->item_count T CTOR_ARGS;  \
+            T* obj = new ((T*)cur_block_->items + cur_block_->item_count) T CTOR_ARGS;  \
             if (!ObjectPoolValidator<T>::validate(obj)) {  \
                 obj->~T();  \
                 return nullptr;  \
@@ -146,7 +146,7 @@ public:
 
         template <typename A1>
         inline T* get(const A1& a1) {
-            OBJECT_POOL_GET(a1);
+            OBJECT_POOL_GET((a1));
         }
 
         template <typename A1, typename A2>
@@ -232,7 +232,7 @@ public:
         info.block_item_num = BLOCK_ITEM_COUNT;
 
         for (size_t i = 0; i < info.block_group_num; ++i) {
-            BlockGroup* bg = _block_groups[i].load(std::memory_order_consume);
+            BlockGroup* bg = block_groups_[i].load(std::memory_order_consume);
             if (NULL == bg) {
                 break;
             }
@@ -320,6 +320,7 @@ private:
         local_pool_ = lp;
         thread_atexit(LocalPool::delete_local_pool, lp);
         local_count_.fetch_add(1, std::memory_order_relaxed);
+        pthread_mutex_unlock(&change_thread_mutex_);
         return lp;
     }
 

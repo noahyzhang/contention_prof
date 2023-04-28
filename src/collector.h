@@ -13,9 +13,9 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <gflags/gflags.h>
 #include <vector>
 #include <atomic>
-#include <gflags/gflags.h>
 #include "common/fast_rand.h"
 #include "common/common.h"
 #include "common/linked_list.h"
@@ -23,8 +23,8 @@
 
 namespace contention_prof {
 
-static const size_t COLLECTOR_SAMPLING_BASE = 16384;
-static const int64_t COLLECTOR_GRAB_INTERVAL_US = 100000L;  // 100ms
+const size_t COLLECTOR_SAMPLING_BASE = 16384;
+const int64_t COLLECTOR_GRAB_INTERVAL_US = 100000L;  // 100ms
 
 struct CollectorSpeedLimit {
     size_t sampling_range;

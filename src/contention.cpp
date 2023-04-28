@@ -9,6 +9,8 @@
 #include "sample.h"
 #include "collector.h"
 #include "common/object_pool.h"
+#include "common/log.h"
+#include "profiler.h"
 #include "contention.h"
 
 namespace contention_prof {
@@ -42,8 +44,6 @@ struct TLSPthreadContentionSites {
 
 static __thread TLSPthreadContentionSites tls_csites = {0, 0, {}};
 static __thread bool tls_inside_lock = false;
-
-static uint64_t g_cp_version = 0;
 
 const size_t MUTEX_MAP_SIZE = 1024;
 struct MutexMapEntry {
@@ -82,7 +82,8 @@ pthread_contention_site_t* add_pthread_contention_site(pthread_mutex_t* mutex) {
 bool remove_pthread_contention_site(pthread_mutex_t* mutex, pthread_contention_site_t* saved_csite) {
     MutexMapEntry& entry = g_mutex_map[hash_mutex_ptr(mutex) & (MUTEX_MAP_SIZE - 1)];
     auto& m = entry.versioned_mutex;
-    if (m.load(std::memory_order_relaxed) & (((((uint64_t)1) << PTR_BITS) - 1)) != (uint64_t)mutex) {
+    if ( (m.load(std::memory_order_relaxed) & ( ( ((uint64_t)1) << PTR_BITS) - 1))
+        != (uint64_t)mutex) {
         return false;
     }
     *saved_csite = entry.csite;
@@ -98,18 +99,24 @@ void submit_contention(const pthread_contention_site_t& csite, int64_t now_ns) {
     sc->duration_ns = csite.duration_ns * COLLECTOR_SAMPLING_BASE / csite.sampling_range;
     sc->count = COLLECTOR_SAMPLING_BASE / static_cast<double>(csite.sampling_range);
     sc->frames_count = backtrace(sc->stack, sizeof(sc->stack) / sizeof(sc->stack[0]));
+    LOG(DEBUG) << "submit_contention: duration_ns: " << sc->duration_ns
+        << ", count: " << sc->count << ", frames_count: " << sc->frames_count;
     sc->submit(now_ns / 1000);
     tls_inside_lock = false;
 }
 
 int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
+    // 收集锁竞争信息的代码可能会调用 pthread_mutex_lock，并且可能会造成死锁，因此不采样
+    if (!g_cp || tls_inside_lock) {
+        return real_pthread_mutex_lock_func(mutex);
+    }
     // 对于没有竞争的锁，直接放行，不要减慢人家的速度
     int res = pthread_mutex_trylock(mutex);
     if (res != EBUSY) {
         // EBUSY 表示 mutex 所指向的互斥锁已锁定，无法获取，有竞争
         return res;
     }
-
+    LOG(DEBUG) << "start sampling";
     const size_t sampling_range = is_collectable(&g_cp_sl);
 
     pthread_contention_site_t* csite = nullptr;
@@ -146,6 +153,9 @@ int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
 }
 
 int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
+    if (!g_cp || tls_inside_lock) {
+        return real_pthread_mutex_unlock_func(mutex);
+    }
     uint64_t unlock_start_time_ns = 0;
     bool miss_in_tls = true;
     pthread_contention_site_t saved_csite = {0, 0};
@@ -174,42 +184,6 @@ int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
         submit_contention(saved_csite, unlock_end_time_ns);
     }
     return res;
-}
-
-static ContentionProfiler* g_cp = nullptr;
-static std::mutex g_cp_mutex;
-
-bool ContentionProfilerStart(const char* filename) {
-    if (filename == nullptr) {
-        return false;
-    }
-    if (g_cp) {
-        return false;
-    }
-    std::unique_ptr<ContentionProfiler> ctx(new ContentionProfiler(filename));
-    {
-        std::lock_guard<std::mutex> guard(g_cp_mutex);
-        if (g_cp) {
-            return false;
-        }
-        g_cp = ctx.release();
-        ++g_cp_version;
-    }
-    return true;
-}
-
-void ContentionProfilerStop() {
-    ContentionProfiler* ctx = nullptr;
-    if (g_cp) {
-        std::unique_lock<std::mutex> mu(g_cp_mutex);
-        if (g_cp) {
-            ctx = g_cp;
-            g_cp = nullptr;
-            mu.unlock();
-            ctx->init_if_needed();
-            delete ctx;
-        }
-    }
 }
 
 }  // namespace contention_prof

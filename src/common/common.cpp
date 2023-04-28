@@ -5,6 +5,8 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <fstream>
+#include <sstream>
 #include "common.h"
 
 namespace contention_prof {
@@ -35,28 +37,17 @@ uint64_t Util::fmix64(uint64_t k) {
 }
 
 std::string Util::get_self_maps() {
-    std::string res;
-    int fd = open("/proc/self/maps", O_RDONLY);
-    if (fd < 0) {
-        return 0;
-    }
-    char buf[10] = {0};
-    for (;;) {
-        buf[0] = '\0';
-        ssize_t nr = read(fd, buf, sizeof(buf)-1);
-        if (nr < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            break;
-        } else if (nr > 0) {
-            res.append(buf);
-        } else {  // nr == 0
-            break;
+    std::ifstream maps("/proc/self/maps");
+    std::stringstream oss;
+    std::string line;
+
+    if (maps.is_open()) {
+        for (; std::getline(maps, line); ) {
+            oss << line << '\n';
         }
+        maps.close();
     }
-    close(fd);
-    return res;
+    return oss.str();
 }
 
 }  // namespace contention_prof

@@ -28,5 +28,15 @@ typedef integral_constant<bool, false> false_type;
 template <typename T, typename U> struct is_same : public false_type {};
 template <typename T> struct is_same<T, T> : true_type {};
 
+template <typename T> struct is_integral : false_type { };
+template<> struct is_integral<bool> : true_type { };
+template<> struct is_integral<char> : true_type { };
+template<> struct is_integral<unsigned char> : true_type { };
+template<> struct is_integral<signed char> : true_type { };
+
+template <typename T> struct is_floating_point : false_type { };
+template<> struct is_floating_point<float> : true_type { };
+template<> struct is_floating_point<double> : true_type { };
+template<> struct is_floating_point<long double> : true_type { };
 
 }  // namespace contention_prof

@@ -21,7 +21,7 @@
 
 namespace contention_prof {
 
-static CollectorSpeedLimit g_cp_sl;
+extern CollectorSpeedLimit g_cp_sl;
 
 struct SampledContention : public Collected {
     int64_t duration_ns;
@@ -44,21 +44,6 @@ struct SampledContention : public Collected {
         MurmurHash3_x86_32(stack, sizeof(void*) * frames_count, seed, &code);
         return code;
     }
-};
-
-class ContentionProfiler {
-public:
-    explicit ContentionProfiler(const char* name);
-    ~ContentionProfiler();
-    void dump_and_destroy(SampledContention* c);
-    void flush_to_disk(bool ending);
-    void init_if_needed();
-private:
-    bool init_;
-    bool first_write_;
-    std::string filename_;
-    std::ofstream file_stream_;
-    std::unordered_set<SampledContention*> hash_set;
 };
 
 }  // namespace contention_prof

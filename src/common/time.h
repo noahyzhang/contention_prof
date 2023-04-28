@@ -37,7 +37,7 @@ inline timespec nanoseconds_from(timespec start_time, int64_t nanoseconds) {
 inline timespec nanoseconds_from_now(int64_t nanoseconds) {
     timespec time;
     clock_gettime(CLOCK_REALTIME, &time);
-    return nanoseconds_from(time, nanoseconds * 1000L);
+    return nanoseconds_from(time, nanoseconds);
 }
 
 inline timespec microseconds_from_now(int64_t microseconds) {

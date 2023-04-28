@@ -12,6 +12,7 @@
 #pragma once
 
 #include <string>
+#include "common/variable.h"
 #include "common/sampler.h"
 #include "common/series.h"
 #include "common/combiner.h"
@@ -54,7 +55,8 @@ public:
         , inv_op_(inv_op) {}
 
     ~Reducer() {
-        hide();
+        // TODO
+        // hide();
         if (sampler_) {
             sampler_->destroy();
             sampler_ = nullptr;

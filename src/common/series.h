@@ -13,8 +13,16 @@
 
 #include <string>
 #include <ostream>
+#include "common/type_traits.h"
 
 namespace contention_prof {
+
+template <typename T, typename Op, typename Enabler = void>
+struct DivideOnAddition {
+    static void inplace_divide(T& /*obj*/, const Op&, int /*number*/) {
+        // do nothing
+    }
+};
 
 template <typename T, typename Op>
 class SeriesBase {
@@ -47,12 +55,12 @@ private:
     public:
         Data() {
             // is_pod does not work for gcc 3.4
-            if (butil::is_integral<T>::value ||
-                butil::is_floating_point<T>::value) {
+            if (is_integral<T>::value ||
+                is_floating_point<T>::value) {
                 memset(_array, 0, sizeof(_array));
             }
         }
-        
+
         T& second(int index) { return _array[index]; }
         const T& second(int index) const { return _array[index]; }
 
