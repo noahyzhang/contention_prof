@@ -22,6 +22,12 @@
 
 namespace contention_prof {
 
+/**
+ * @brief 对象池中的空闲块
+ * 
+ * @tparam T 
+ * @tparam ITEM_COUNT 
+ */
 template <typename T, size_t ITEM_COUNT>
 struct ObjectPoolFreeChunk {
     size_t free_count;
@@ -51,21 +57,48 @@ static const size_t OP_INITIAL_FREE_LIST_SIZE = 1024;
 
 template <typename T>
 class ObjectPoolBlockItemNum {
+private:
     static const size_t N1 = ObjectPoolBlockMaxSize<T>::value / sizeof(T);
     static const size_t N2 = (N1 < 1 ? 1 : N1);
 public:
     static const size_t value = (N2 > ObjectPoolBlockMaxItem<T>::value ? ObjectPoolBlockMaxItem<T>::value : N2);
 };
 
+/**
+ * @brief 对象池
+ * 
+ * @tparam T 
+ */
 template <typename T>
 class ObjectPool {
 public:
     static const size_t BLOCK_ITEM_COUNT = ObjectPoolBlockItemNum<T>::value;
+    // 对象池中空闲块的数量
     static const size_t FREE_CHUNK_ITEM_COUNT = BLOCK_ITEM_COUNT;
 
     using FreeChunk = ObjectPoolFreeChunk<T, FREE_CHUNK_ITEM_COUNT>;
     using DynamicFreeChunk = ObjectPoolFreeChunk<T, 0>;
 
+public:
+    static inline ObjectPool* get_instance() {
+        static ObjectPool instance;
+        return &instance;
+    }
+
+private:
+    ObjectPool() {
+        free_chunks_.reserve(OP_INITIAL_FREE_LIST_SIZE);
+        pthread_mutex_init(&free_chunks_mutex_, nullptr);
+    }
+    ~ObjectPool() {
+        pthread_mutex_destroy(&free_chunks_mutex_);
+    }
+    ObjectPool(const ObjectPool&) = delete;
+    ObjectPool& operator=(const ObjectPool&) = delete;
+    ObjectPool(ObjectPool&&) = delete;
+    ObjectPool& operator=(ObjectPool&&) = delete;
+
+public:
     struct Block {
         char items[sizeof(T) * BLOCK_ITEM_COUNT];
         size_t item_count;
@@ -82,6 +115,10 @@ public:
         }
     };
 
+    /**
+     * @brief 本地对象池
+     * 
+     */
     class LocalPool {
     public:
         explicit LocalPool(ObjectPool* pool)
@@ -102,43 +139,39 @@ public:
             delete reinterpret_cast<LocalPool*>(arg);
         }
 
-    #define OBJECT_POOL_GET(CTOR_ARGS)  \
-        if (cur_free_.free_count) {  \
-            return cur_free_.ptrs[--cur_free_.free_count];  \
-        }  \
-        if (pool_->pop_free_chunk(cur_free_)) {  \
-            return cur_free_.ptrs[--cur_free_.free_count];  \
-        }  \
-        if (cur_block_ && cur_block_->item_count < BLOCK_ITEM_COUNT) {  \
-            T* obj = new ((T*)cur_block_->items + cur_block_->item_count) T CTOR_ARGS;  \
-            if (!ObjectPoolValidator<T>::validate(obj)) {  \
-                obj->~T();  \
-                return nullptr;  \
+        /**
+         * 1. 如果 cur_free_ 中还有内存块，先从 cur_free_ 中取出一块内存
+         * 2. 从 pool_ 中获取一个 cur_free_，然后再从 cur_free_ 中取出一块内存
+         * 3. 如果 cur_block_ 不为空，且项目数量小于 BLOCK_ITEM_COUNT，则在对应位置构造
+         * 4. 否则增加一个 block，并赋给 cur_block_，然后从这个 cur_block_ 中获取
+         */
+        #define OBJECT_POOL_GET(CTOR_ARGS)  \
+            if (cur_free_.free_count) {  \
+                return cur_free_.ptrs[--cur_free_.free_count];  \
             }  \
-            ++cur_block_->item_count;  \
-            return obj;  \
-        }  \
-        cur_block_ = add_block(&cur_block_index_);  \
-        if (cur_block_ != nullptr) {  \
-            T* obj = new ((T*)cur_block_->items + cur_block_->item_count) T CTOR_ARGS;  \
-            if (!ObjectPoolValidator<T>::validate(obj)) {  \
-                obj->~T();  \
-                return nullptr;  \
+            if (pool_->pop_free_chunk(cur_free_)) {  \
+                return cur_free_.ptrs[--cur_free_.free_count];  \
             }  \
-            ++cur_block_->item_count;  \
-            return obj;  \
-        }  \
-        cur_block_ = add_block(&cur_block_index_);  \
-        if (cur_block_ != nullptr) {  \
-            T* obj = new ((T*)cur_block_->items + cur_block_->item_count) T CTOR_ARGS;  \
-            if (!ObjectPoolValidator<T>::validate(obj)) {  \
-                obj->~T();  \
-                return nullptr;  \
+            if (cur_block_ && cur_block_->item_count < BLOCK_ITEM_COUNT) {  \
+                T* obj = new (reinterpret_cast<T*>(cur_block_->items) + cur_block_->item_count) T CTOR_ARGS;  \
+                if (!ObjectPoolValidator<T>::validate(obj)) {  \
+                    obj->~T();  \
+                    return nullptr;  \
+                }  \
+                ++cur_block_->item_count;  \
+                return obj;  \
             }  \
-            ++cur_block_->item_count;  \
-            return obj;  \
-        }  \
-        return nullptr;  \
+            cur_block_ = add_block(&cur_block_index_);  \
+            if (cur_block_ != nullptr) {  \
+                T* obj = new (reinterpret_cast<T*>(cur_block_->items) + cur_block_->item_count) T CTOR_ARGS;  \
+                if (!ObjectPoolValidator<T>::validate(obj)) {  \
+                    obj->~T();  \
+                    return nullptr;  \
+                }  \
+                ++cur_block_->item_count;  \
+                return obj;  \
+            }  \
+            return nullptr;  \
 
         inline T* get() {
             OBJECT_POOL_GET();
@@ -168,12 +201,19 @@ public:
         }
 
     private:
-        ObjectPool* pool_;
-        Block* cur_block_;
-        size_t cur_block_index_;
+        // 对象池
+        ObjectPool* pool_{nullptr};
+        Block* cur_block_{nullptr};
+        size_t cur_block_index_{0};
         FreeChunk cur_free_;
     };
 
+public:
+    /**
+     * @brief 获取一个对象
+     * 
+     * @return T* 
+     */
     inline T* get_object() {
         LocalPool* lp = get_or_new_local_pool();
         if (__glibc_likely(lp != nullptr)) {
@@ -200,6 +240,12 @@ public:
         return nullptr;
     }
 
+    /**
+     * @brief 通过参数返回一个对象
+     * 
+     * @param ptr 
+     * @return int 
+     */
     inline int return_object(T* ptr) {
         LocalPool* lp = get_or_new_local_pool();
         if (__glibc_likely(lp != nullptr)) {
@@ -208,6 +254,10 @@ public:
         return -1;
     }
 
+    /**
+     * @brief 清理对象池
+     * 
+     */
     void clear_objects() {
         LocalPool* lp = local_pool_;
         if (lp) {
@@ -250,21 +300,7 @@ public:
         return info;
     }
 
-    static inline ObjectPool* get_instance() {
-        static ObjectPool instance;
-        return &instance;
-    }
-
 private:
-    ObjectPool() {
-        free_chunks_.reserve(OP_INITIAL_FREE_LIST_SIZE);
-        pthread_mutex_init(&free_chunks_mutex_, nullptr);
-    }
-
-    ~ObjectPool() {
-        pthread_mutex_destroy(&free_chunks_mutex_);
-    }
-
     static Block* add_block(size_t* index) {
         Block* const new_block = new Block();
         if (new_block == nullptr) {
@@ -307,6 +343,11 @@ private:
         return bg != nullptr;
     }
 
+    /**
+     * @brief 获取本地对象池，如果不存在，则创建
+     * 
+     * @return LocalPool* 
+     */
     inline LocalPool* get_or_new_local_pool() {
         LocalPool* lp = local_pool_;
         if (__glibc_likely(lp != nullptr)) {

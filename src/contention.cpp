@@ -94,7 +94,9 @@ bool remove_pthread_contention_site(pthread_mutex_t* mutex, pthread_contention_s
 
 // 注意这个函数在锁外执行
 void submit_contention(const pthread_contention_site_t& csite, int64_t now_ns) {
+    // 使用 TLS 进行加锁，收集锁竞争的代码中可能会调用 pthread_mutex_lock
     tls_inside_lock = true;
+    // 从对象池中获取一个对象
     SampledContention* sc = get_object<SampledContention>();
     sc->duration_ns = csite.duration_ns * COLLECTOR_SAMPLING_BASE / csite.sampling_range;
     sc->count = COLLECTOR_SAMPLING_BASE / static_cast<double>(csite.sampling_range);
@@ -106,6 +108,10 @@ void submit_contention(const pthread_contention_site_t& csite, int64_t now_ns) {
 }
 
 int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
+    // 在 ld 链接加载的时候，有可能 constructor 还没有被调用，这里调用一次
+    if (__glibc_unlikely(real_pthread_mutex_lock_func == nullptr)) {
+        mutex_hook_init();
+    }
     // 收集锁竞争信息的代码可能会调用 pthread_mutex_lock，并且可能会造成死锁，因此不采样
     if (!g_cp || tls_inside_lock) {
         return real_pthread_mutex_lock_func(mutex);
@@ -153,6 +159,9 @@ int pthread_mutex_lock_impl(pthread_mutex_t* mutex) {
 }
 
 int pthread_mutex_unlock_impl(pthread_mutex_t* mutex) {
+    if (__glibc_unlikely(real_pthread_mutex_unlock_func == nullptr)) {
+        mutex_hook_init();
+    }
     if (!g_cp || tls_inside_lock) {
         return real_pthread_mutex_unlock_func(mutex);
     }

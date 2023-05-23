@@ -18,20 +18,25 @@ static CollectorSpeedLimit g_null_speed_limit;
 
 class Collector : public Reducer<Collected*, CombineCollected> {
 public:
-    Collector();
+    static Collector* get_instance() {
+        static Collector instance;
+        return &instance;
+    }
     ~Collector();
+    Collector(const Collector&) = delete;
+    Collector& operator=(const Collector&) = delete;
+    Collector(Collector&&) = delete;
+    Collector& operator=(Collector&&) = delete;
 
+private:
+    Collector() = default;
+
+public:
     int64_t last_active_cpuwide_us() const {
         return last_active_cpuwide_us_;
     }
 
     void wakeup_grab_thread();
-
-public:
-    static Collector* get_instance() {
-        static Collector instance;
-        return &instance;
-    }
 
 private:
     void grab_thread();

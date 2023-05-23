@@ -67,6 +67,7 @@ public:
         }
     }
 
+public:
     Reducer& operator<<(const T& value);
 
     T get_value() const {
