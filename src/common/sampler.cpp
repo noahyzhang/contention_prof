@@ -112,18 +112,8 @@ void SamplerCollector::run() {
     }
 }
 
-Sampler::Sampler() : used_(true) {}
-
-Sampler::~Sampler() {}
-
 void Sampler::schedule() {
     *SamplerCollector::get_instance() << this;
-}
-
-void Sampler::destroy() {
-    mtx_.lock();
-    used_ = false;
-    mtx_.unlock();
 }
 
 }  // namespace contention_prof

@@ -13,6 +13,11 @@
 
 namespace contention_prof {
 
+/**
+ * @brief TLS 工具类
+ * 
+ * @tparam T 
+ */
 template <typename T>
 class ThreadLocalHelper {
 public:
@@ -22,6 +27,7 @@ public:
         }
         value = new T();
         if (value != nullptr) {
+            // 线程退出时清理这块内存
             thread_atexit(delete_object<T>, value);
         }
         return value;

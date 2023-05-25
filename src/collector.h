@@ -20,6 +20,9 @@
 #include "common/common.h"
 #include "common/linked_list.h"
 #include "common/reducer.h"
+#include "common/murmurhash3.h"
+#include "profiler.h"
+#include "common/object_pool.h"
 
 namespace contention_prof {
 
@@ -45,6 +48,10 @@ public:
     virtual void process(std::vector<Collected*>& sample) = 0;
 };
 
+/**
+ * @brief 存储数据基类
+ * 
+ */
 class Collected : public LinkNode<Collected> {
 public:
     void submit(uint64_t cpu_time_us);
@@ -54,29 +61,55 @@ public:
     virtual CollectorPreprocessor* preprocessor() { return nullptr; }
 };
 
-struct CombineCollected {
-    void operator()(Collected*& s1, Collected* s2) const {
-        if (s2 == nullptr) {
-            return;
+static CollectorSpeedLimit g_cp_sl;
+
+/**
+ * @brief 实际被存储的数据
+ * 
+ */
+struct SampledContention : public Collected {
+    int64_t duration_ns;
+    double count;
+    int frames_count;
+    void* stack[26];
+
+    /**
+     * @brief 数据的拷贝和清理
+     * 
+     * @param round 
+     */
+    void dump_and_destroy(size_t round) {
+        if (g_cp) {
+            pthread_mutex_lock(&g_cp_mutex);
+            if (g_cp) {
+                g_cp->dump_and_destroy(this);
+                pthread_mutex_unlock(&g_cp_mutex);
+                return;
+            }
+            pthread_mutex_unlock(&g_cp_mutex);
         }
-        if (s1 == nullptr) {
-            s1 = s2;
-            return;
+        destroy();
+    }
+
+    void destroy() {
+        return_object(this);
+    }
+
+    CollectorSpeedLimit* speed_limit() {
+        return &g_cp_sl;
+    }
+
+    size_t hash_code() const {
+        if (frames_count == 0) {
+            return 0;
         }
-        s1->insert_before_as_list(s2);
+        uint32_t code = 1;
+        uint32_t seed = frames_count;
+        MurmurHash3_x86_32(stack, sizeof(void*) * frames_count, seed, &code);
+        return code;
     }
 };
 
-inline size_t is_collectable(CollectorSpeedLimit* speed_limit) {
-    if (__glibc_likely(speed_limit->ever_grabbed)) {
-        const size_t sampling_range = speed_limit->sampling_range;
-        if ((fast_rand() & (COLLECTOR_SAMPLING_BASE - 1)) >= sampling_range) {
-            return 0;
-        }
-        return sampling_range;
-    }
-    extern size_t is_collectable_before_first_time_grabbed(CollectorSpeedLimit*);
-    is_collectable_before_first_time_grabbed(speed_limit);
-}
+inline size_t is_collectable(CollectorSpeedLimit* speed_limit);
 
 }  // namespace contention_prof

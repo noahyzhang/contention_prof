@@ -34,16 +34,23 @@ struct Sample {
 class SamplerCollector;
 class Sampler : public LinkNode<Sampler> {
 public:
-    Sampler();
+    Sampler() = default;
+
     virtual void take_sample() = 0;
+
     void schedule();
-    void destroy();
+
+    void destroy() {
+        mtx_.lock();
+        used_ = false;
+        mtx_.unlock();
+    }
 
 protected:
-    virtual ~Sampler();
+    virtual ~Sampler() = default;
 
     friend class SamplerCollector;
-    bool used_;
+    bool used_{true};
     std::mutex mtx_;
 };
 

@@ -45,6 +45,12 @@ private:
     Combiner* c_;
 };
 
+/**
+ * @brief 线程安全的元素操作工具类
+ * 
+ * @tparam T 
+ * @tparam Enabler 
+ */
 template <typename T, typename Enabler = void>
 class ElementContainer {
 public:
@@ -81,6 +87,7 @@ private:
     std::mutex mtx_;
 };
 
+
 template <typename ResultTp, typename ElementTp, typename BinaryOp>
 class AgentCombiner {
 public:
@@ -90,7 +97,7 @@ public:
 public:
     struct Agent : public LinkNode<Agent> {
     public:
-        Agent() : combiner(nullptr) {}
+        Agent() = default;
 
         ~Agent() {
             if (combiner) {
@@ -111,10 +118,11 @@ public:
         }
 
     public:
-        self_type* combiner;
+        self_type* combiner{nullptr};
         ElementContainer<ElementTp> element;
     };
 
+public:
     using AgentGroupClass = AgentGroup<Agent>;
 
     explicit AgentCombiner(

@@ -14,7 +14,7 @@
 #include <string>
 #include <fstream>
 #include <unordered_set>
-#include "sample.h"
+#include "collector.h"
 
 namespace contention_prof {
 

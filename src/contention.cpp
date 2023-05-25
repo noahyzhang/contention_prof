@@ -6,7 +6,6 @@
 #include <mutex>
 #include <memory>
 #include "common/common.h"
-#include "sample.h"
 #include "collector.h"
 #include "common/object_pool.h"
 #include "common/log.h"
@@ -50,6 +49,8 @@ struct MutexMapEntry {
     std::atomic<uint64_t> versioned_mutex;
     pthread_contention_site_t csite;
 };
+// 存储 mutex 和 csite 的对应关系，数组最长 MUTEX_MAP_SIZE 长度
+// 只监控 MUTEX_MAP_SIZE 个锁
 static MutexMapEntry g_mutex_map[MUTEX_MAP_SIZE] = {};
 
 bool is_contention_site_valid(const pthread_contention_site_t& cs) {

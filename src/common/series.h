@@ -73,6 +73,8 @@ private:
         T& day(int index) { return _array[144 + index]; }
         const T& day(int index) const { return _array[144 + index]; }
     private:
+        // [0, 60) ==> 秒; [60, 120) ==> 分钟
+        // [120, 144) ==> 小时; [144, 174) ==> 天
         T _array[60 + 60 + 24 + 30];
     };
 
